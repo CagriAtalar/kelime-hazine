@@ -2,16 +2,19 @@ import React, { useState, useContext } from 'react';
 import { View, TextInput, Button, Text, StyleSheet } from 'react-native';
 import { AuthContext } from '../../src/context/AuthContext';
 
-export default function LoginScreen({ navigation }) {
+export default function LoginScreen() {
     const { login } = useContext(AuthContext);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [err, setErr] = useState('');
 
     const onSubmit = async () => {
+        setErr(''); // Önce hata mesajını sıfırla
         try {
             await login(username, password);
+            // Başarılı login sonrası yönlendirme zaten AuthContext veya başka yerlerde yapılır
         } catch (e) {
+            console.error('Login error:', e);
             setErr(e.response?.data?.error || 'Login failed');
         }
     };
@@ -33,10 +36,6 @@ export default function LoginScreen({ navigation }) {
                 secureTextEntry
             />
             <Button title="Login" onPress={onSubmit} />
-            <Button
-                title="Register"
-                onPress={() => navigation.navigate('Register')}
-            />
         </View>
     );
 }

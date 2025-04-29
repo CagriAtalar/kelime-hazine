@@ -14,7 +14,12 @@ export const AuthProvider = ({ children }) => {
     };
 
     const register = async (username, email, password) => {
-        await api.post('/auth/register', { username, email, password });
+        try {
+            const response = await api.post('/auth/register', { username, email, password });
+            return response.data;
+        } catch (error) {
+            throw error;
+        }
     };
 
     const logout = async () => {

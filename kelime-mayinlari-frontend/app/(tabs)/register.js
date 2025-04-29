@@ -10,10 +10,12 @@ export default function RegisterScreen({ navigation }) {
     const [err, setErr] = useState('');
 
     const onSubmit = async () => {
+        setErr(''); // önce hatayı sıfırla
         try {
             await register(username, email, password);
             navigation.goBack();
         } catch (e) {
+            console.error('Register error:', e);
             setErr(e.response?.data?.error || 'Registration failed');
         }
     };

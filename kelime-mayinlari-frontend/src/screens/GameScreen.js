@@ -1,34 +1,75 @@
-import React, { useState, useEffect } from 'react';
-import {
-    View, Text, TextInput, Button, FlatList, StyleSheet, Alert
-} from 'react-native';
-import api from '../api/api';
-import { getSocket } from '../utils/socket';
-import Board from '../components/Board';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Alert, StyleSheet } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import api from '../../src/api/api';
+import { getSocket, initSocket } from '../../src/utils/socket';
+import Board from '../../src/components/Board';
+import TileRow from '../../src/components/TileRow';
+import PlayButton from '../../src/components/PlayButton';
 
-export default function GameScreen({ route, navigation }) {
-    const { gameId } = route.params;
+export default function GameScreen() {
+    const { gameId } = useLocalSearchParams();
+    const router = useRouter();
     const [state, setState] = useState(null);
-    const [word, setWord] = useState('');
-    const [posX, setPosX] = useState('7');
-    const [posY, setPosY] = useState('7');
-    const [dir, setDir] = useState('horizontal');
+    const [boardState, setBoardState] = useState([]);
+    const [hand, setHand] = useState([]);
+    const [selectedTile, setSelectedTile] = useState(null);
+    const [placedTiles, setPlacedTiles] = useState([]); // [{ x, y, harf }]
 
     const loadState = async () => {
         const { data } = await api.get(`/game/${gameId}`);
         setState(data);
+        setBoardState(data.boardState);
+        setHand(data.playerHand);
+        setPlacedTiles([]);
     };
 
-    const place = async () => {
+    const onCellPress = (row, col) => {
+        if (!selectedTile) return;
+
+        const newBoard = [...boardState];
+        if (!newBoard[row][col].harf) {
+            newBoard[row][col] = {
+                ...newBoard[row][col],
+                harf: selectedTile,
+            };
+
+            setBoardState(newBoard);
+
+            const updatedHand = [...hand];
+            const idx = updatedHand.indexOf(selectedTile);
+            if (idx !== -1) updatedHand.splice(idx, 1);
+            setHand(updatedHand);
+
+            setPlacedTiles([...placedTiles, { x: col, y: row, harf: selectedTile }]);
+            setSelectedTile(null);
+        }
+    };
+
+    const onTileSelect = (letter) => {
+        setSelectedTile(letter);
+    };
+
+    const handlePlay = async () => {
+        if (placedTiles.length === 0) {
+            Alert.alert('Error', 'No tiles placed.');
+            return;
+        }
+
+        // kelimeyi oluştur
+        const word = placedTiles.map(t => t.harf).join('');
+        const sorted = [...placedTiles].sort((a, b) => a.x - b.x || a.y - b.y);
+        const direction = (sorted[0].y === sorted[1]?.y) ? 'horizontal' : 'vertical';
+
         try {
             await api.post(`/game/${gameId}/place-word`, {
                 word,
-                startPosition: { x: Number(posX), y: Number(posY) },
-                direction: dir
+                startPosition: { x: sorted[0].x, y: sorted[0].y },
+                direction
             });
-            setWord('');
-            loadState();
+            await loadState();
         } catch (e) {
+            console.error(e);
             Alert.alert('Error', e.response?.data?.error || 'Invalid move');
         }
     };
@@ -40,16 +81,26 @@ export default function GameScreen({ route, navigation }) {
 
     const resign = async () => {
         await api.post(`/game/${gameId}/resign`);
-        navigation.goBack();
+        router.back();
     };
 
     useEffect(() => {
-        loadState();
-        const socket = getSocket();
-        socket.on('game_state_updated', (payload) => {
-            if (payload.gameId === gameId) setState(payload);
-        });
-        return () => socket.off('game_state_updated');
+        const setup = async () => {
+            await loadState();
+            const socket = await initSocket();
+            socket.on('game_state_updated', (payload) => {
+                if (payload.gameId === gameId) setState(payload);
+            });
+        };
+
+        setup();
+
+        return () => {
+            const socket = getSocket();
+            if (socket) {
+                socket.off('game_state_updated');
+            }
+        };
     }, []);
 
     if (!state) return <Text>Loading…</Text>;
@@ -57,39 +108,20 @@ export default function GameScreen({ route, navigation }) {
     return (
         <View style={styles.container}>
             <Text>Score: You {state.playerScore} — Opp {state.opponentScore}</Text>
-            <Board board={state.boardState} />
-            <Text>Your hand: {state.playerHand.join(', ')}</Text>
-
-            <View style={styles.row}>
-                <TextInput
-                    style={styles.smallInput}
-                    value={posX}
-                    onChangeText={setPosX}
-                    keyboardType="numeric"
-                />
-                <TextInput
-                    style={styles.smallInput}
-                    value={posY}
-                    onChangeText={setPosY}
-                    keyboardType="numeric"
-                />
-                <TextInput
-                    style={styles.input}
-                    placeholder="WORD"
-                    value={word}
-                    onChangeText={setWord}
-                />
+            <Board boardState={boardState} onCellPress={onCellPress} />
+            <TileRow letters={hand} onTileSelect={onTileSelect} />
+            <PlayButton onPress={handlePlay} />
+            <Text style={{ marginTop: 12, color: 'gray' }}>
+                Tap a tile, then tap a board cell to place it.
+            </Text>
+            <View style={{ marginTop: 8 }}>
+                <Text onPress={pass} style={{ color: 'blue' }}>🕓 Pass</Text>
+                <Text onPress={resign} style={{ color: 'red', marginTop: 4 }}>❌ Resign</Text>
             </View>
-            <Button title="Place Word" onPress={place} />
-            <Button title="Pass" onPress={pass} />
-            <Button title="Resign" onPress={resign} color="red" />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 16 },
-    row: { flexDirection: 'row', alignItems: 'center', marginVertical: 8 },
-    smallInput: { borderWidth: 1, width: 40, marginRight: 8, textAlign: 'center' },
-    input: { borderWidth: 1, flex: 1, padding: 8 }
+    container: { flex: 1, padding: 16, alignItems: 'center' }
 });
