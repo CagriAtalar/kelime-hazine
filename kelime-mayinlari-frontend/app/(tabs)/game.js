@@ -9,7 +9,7 @@ import PlayButton from '../../src/components/PlayButton';
 import UndoButton from '../../src/components/UndoButton';
 
 export default function GameScreen() {
-    const { gameId } = useLocalSearchParams();
+    const { gameId } = useLocalSearchParams();  // gameId'nin doğru şekilde alındığından emin ol
     const router = useRouter();
 
     const [state, setState] = useState(null);
@@ -18,7 +18,12 @@ export default function GameScreen() {
     const [selectedTile, setSelectedTile] = useState(null);
     const [placedTiles, setPlacedTiles] = useState([]);
 
+    // Oyun durumu yükleme
     const loadState = async () => {
+        if (!gameId) {
+            Alert.alert("Error", "Game ID is missing.");
+            return;
+        }
         try {
             const { data } = await api.get(`/game/${gameId}`);
             setState(data);
@@ -27,9 +32,31 @@ export default function GameScreen() {
             setPlacedTiles([]);
         } catch (e) {
             console.error('Game load error:', e);
+            Alert.alert('Error', 'Unable to load game data');
         }
     };
 
+    useEffect(() => {
+        if (gameId) {
+            loadState();  // gameId mevcutsa state'i yükle
+            const socket = initSocket();
+            socket.on('game_state_updated', (payload) => {
+                if (payload.gameId === gameId) {
+                    setState(payload);
+                    setBoardState(payload.boardState);
+                    setHand(payload.playerHand);
+                }
+            });
+
+            return () => {
+                socket.off('game_state_updated');
+            };
+        } else {
+            Alert.alert("Error", "Game ID is missing.");
+        }
+    }, [gameId]);
+
+    // Tile seçim işlemi
     const onCellPress = (row, col) => {
         if (!selectedTile || boardState[row][col].harf) return;
         const newBoard = [...boardState];
@@ -72,7 +99,7 @@ export default function GameScreen() {
             await loadState();
         } catch (e) {
             console.error('Place Word Error:', e);
-            Alert.alert('Hata', e.response?.data?.error || 'Geçersiz hamle');
+            Alert.alert('Error', e.response?.data?.error || 'Invalid move');
         }
     };
 
@@ -81,7 +108,7 @@ export default function GameScreen() {
             await api.post(`/game/${gameId}/pass`);
             await loadState();
         } catch (e) {
-            Alert.alert('Pass error', e.response?.data?.error || 'Hata');
+            Alert.alert('Pass error', e.response?.data?.error || 'Error');
         }
     };
 
@@ -90,7 +117,7 @@ export default function GameScreen() {
             await api.post(`/game/${gameId}/resign`);
             router.back();
         } catch (e) {
-            Alert.alert('Resign error', e.response?.data?.error || 'Hata');
+            Alert.alert('Resign error', e.response?.data?.error || 'Error');
         }
     };
 
@@ -100,29 +127,9 @@ export default function GameScreen() {
             await loadState();
         } catch (e) {
             console.error('Reward error:', e);
-            Alert.alert('Ödül Hatası', e.response?.data?.error || 'Kullanılamadı');
+            Alert.alert('Reward Error', e.response?.data?.error || 'Reward cannot be used');
         }
     };
-
-    useEffect(() => {
-        const setup = async () => {
-            await loadState();
-            const socket = await initSocket();
-            socket.on('game_state_updated', (payload) => {
-                if (payload.gameId === gameId) {
-                    setState(payload);
-                    setBoardState(payload.boardState);
-                    setHand(payload.playerHand);
-                }
-            });
-        };
-
-        setup();
-        return () => {
-            const socket = getSocket();
-            if (socket) socket.off('game_state_updated');
-        };
-    }, []);
 
     if (!state) return <Text>Yükleniyor…</Text>;
 

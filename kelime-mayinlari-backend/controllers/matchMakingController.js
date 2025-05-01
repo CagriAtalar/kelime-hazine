@@ -15,18 +15,18 @@ exports.joinQueue = async (req, res) => {
         const validOptions = ['2min', '5min', '12hr', '24hr'];
 
         if (!validOptions.includes(timeOption)) {
-            logger.warn(`Join matchmaking failed: Invalid time option "${timeOption}"`);
+            logger.warn(`Invalid time option: "${timeOption}"`);
             return res.status(400).json({ error: 'Invalid time option' });
         }
 
-        const existing = await Matchmaking.findOne({ userId, timeOption });
-        if (existing) {
-            logger.warn(`Join matchmaking failed: Already in queue userId=${userId}`);
+        const alreadyInQueue = await Matchmaking.findOne({ userId, timeOption });
+        if (alreadyInQueue) {
+            logger.warn(`User already in queue: userId=${userId}`);
             return res.status(400).json({ error: 'Already in matchmaking' });
         }
 
         await Matchmaking.create({ userId, timeOption, createdAt: new Date() });
-        logger.info(`User added to matchmaking queue: userId=${userId}, timeOption=${timeOption}`);
+        logger.info(`Added to matchmaking queue: userId=${userId}, timeOption=${timeOption}`);
 
         const opponent = await Matchmaking.findOne({
             userId: { $ne: userId },
@@ -40,17 +40,22 @@ exports.joinQueue = async (req, res) => {
                 status: 'active',
                 startTime: new Date()
             });
+            logger.success(`Game created: gameId=${game._id}`);
 
             const state = initializeGameState(game._id, userId, opponent.userId);
-            await GameState.create(state);
+            try {
+                const createdState = await GameState.create(state);
+                logger.success(`GameState created for gameId=${game._id}`);
+            } catch (gsErr) {
+                logger.error(`❌ Failed to create GameState: ${gsErr.message}`);
+                await Game.deleteOne({ _id: game._id });
+                return res.status(500).json({ error: 'Failed to initialize game state' });
+            }
 
             await Matchmaking.deleteMany({ userId: { $in: [userId, opponent.userId] } });
-
-            logger.success(`Match found and game created: gameId=${game._id}`);
             return res.json({ status: 'matched', gameId: game._id });
         }
 
-        logger.info(`No opponent found yet, waiting: userId=${userId}`);
         return res.json({ status: 'waiting' });
     } catch (error) {
         logger.error(`Join matchmaking error: ${error.message}`);

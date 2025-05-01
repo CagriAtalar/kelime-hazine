@@ -2,28 +2,48 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Button, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import api from '../../src/api/api';
 import { initSocket, getSocket } from '../../src/utils/socket';
-
+import { useRouter } from 'expo-router';
 export default function HomeScreen({ navigation }) {
     const [active, setActive] = useState([]);
     const [completed, setCompleted] = useState([]);
     const [status, setStatus] = useState('');
-
+    const router = useRouter();
     const loadGames = async () => {
-        const { data } = await api.get('/game');
-        setActive(data.activeGames);
-        setCompleted(data.completedGames);
-    };
-
-    const joinQueue = async () => {
-        setStatus('waiting');
-        const { data } = await api.post('/matchmaking', { timeOption: '2min' });
-        if (data.status === 'matched') {
-            navigation.navigate('Game', { gameId: data.gameId });
-        } else {
-            setStatus('waiting for match…');
+        try {
+            const { data } = await api.get('/game');
+            if (data?.activeGames) {
+                setActive(data.activeGames);
+            }
+            if (data?.completedGames) {
+                setCompleted(data.completedGames);
+            }
+        } catch (e) {
+            console.error("Error loading games:", e);
         }
     };
-
+    // Join matchmaking
+    const joinQueue = async () => {
+        setStatus('waiting');
+        try {
+            const { data } = await api.post('/matchmaking', { timeOption: '2min' });
+            if (data.status === 'matched') {
+                // Doğrudan game sayfasına yönlendir
+                router.push(`/game/${data.gameId}`);
+            } else {
+                setStatus('waiting for match…');
+            }
+        } catch (e) {
+            console.error('Error in matchmaking:', e);
+            setStatus('Error in matchmaking');
+        }
+    };
+    const navigateToGame = (gameId) => {
+        if (gameId) {
+            router.push(`/game/${gameId}`); // Expo router kullanarak yönlendirme yapıyoruz
+        } else {
+            Alert.alert('Error', 'Game ID is invalid');
+        }
+    };
     useEffect(() => {
         loadGames();
         initSocket().then(socket => {
@@ -42,11 +62,9 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.heading}>Active Games</Text>
             <FlatList
                 data={active}
-                keyExtractor={i => i.gameId}
+                keyExtractor={(item) => item.gameId.toString()}  // gameId'yi string yapıyoruz
                 renderItem={({ item }) => (
-                    <TouchableOpacity
-                        onPress={() => navigation.navigate('Game', { gameId: item.gameId })}
-                    >
+                    <TouchableOpacity onPress={() => navigateToGame(item.gameId)}>
                         <Text>
                             vs {item.opponentUsername} — {item.timeOption} —{' '}
                             {item.isYourTurn ? 'Your turn' : "Opp's turn"}
@@ -58,7 +76,7 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.heading}>Completed Games</Text>
             <FlatList
                 data={completed}
-                keyExtractor={i => i.gameId}
+                keyExtractor={(item) => item.gameId.toString()}
                 renderItem={({ item }) => (
                     <Text>
                         vs {item.opponentUsername} — {item.result} @{' '}

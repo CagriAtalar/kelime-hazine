@@ -12,7 +12,10 @@ const GameStateSchema = new mongoose.Schema({
     player2Hand: { type: [String], default: [] },
     player1Score: { type: Number, default: 0 },
     player2Score: { type: Number, default: 0 },
-    boardState: { type: [[String]], default: Array(15).fill(Array(15).fill('')) },
+    boardState: {
+        type: [[String]],
+        default: () => Array.from({ length: 15 }, () => Array(15).fill(''))
+    },
     boardSpecialTiles: { type: [[String]], default: Array(15).fill(Array(15).fill('')) },
     boardMines: { type: [[String]], default: Array(15).fill(Array(15).fill('')) },
     boardRewards: { type: [[String]], default: Array(15).fill(Array(15).fill('')) },

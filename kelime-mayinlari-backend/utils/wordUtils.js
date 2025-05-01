@@ -6,10 +6,12 @@ const UserStatistics = require('../models/UserStatistics');
 const TURKISH_WORDS = new Set(['MERHABA', 'TEST', 'KELIME', /* ... */]);
 
 exports.initializeGameState = (gameId, p1, p2) => {
-    const letterPool = shuffleLetters(); // returns array of letters
+    const letterPool = exports.shuffleLetters();
     const p1Hand = letterPool.splice(0, 7);
     const p2Hand = letterPool.splice(0, 7);
-    const boardEmpty = Array(15).fill(null).map(() => Array(15).fill(''));
+
+    const emptyMatrix = () => Array(15).fill(null).map(() => Array(15).fill(''));
+
     return {
         gameId,
         currentTurn: Math.random() < 0.5 ? p1 : p2,
@@ -19,12 +21,18 @@ exports.initializeGameState = (gameId, p1, p2) => {
         player2Id: p2,
         player1Hand: p1Hand,
         player2Hand: p2Hand,
-        boardState: boardEmpty,
-        boardSpecialTiles: boardEmpty,
-        boardMines: boardEmpty,
-        boardRewards: boardEmpty,
+        player1Score: 0,
+        player2Score: 0,
+        boardState: emptyMatrix(),
+        boardSpecialTiles: emptyMatrix(),
+        boardMines: emptyMatrix(),
+        boardRewards: emptyMatrix(),
         player1Rewards: [],
-        player2Rewards: []
+        player2Rewards: [],
+        consecutivePasses: 0,
+        areaRestriction: null,
+        frozenLetters: null,
+        extraMovePending: null
     };
 };
 

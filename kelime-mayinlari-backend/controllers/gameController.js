@@ -21,14 +21,23 @@ exports.listGames = async (req, res) => {
         const active = await Promise.all(
             activeGames.map(async (g) => {
                 const state = await GameState.findOne({ gameId: g._id });
+
+                if (!state) {
+                    logger.warn(`Missing GameState for gameId=${g._id}`);
+                    return null;
+                }
+
                 return {
                     gameId: g._id,
-                    opponentUsername: (await g.players.find((id) => id.toString() !== userId)).toString(),
+                    opponentUsername: g.players.find((id) => id.toString() !== userId)?.toString() || 'Unknown',
                     timeOption: g.timeOption,
                     isYourTurn: state.currentTurn.toString() === userId
                 };
             })
         );
+
+        // null'ları temizle
+
 
         const completedGames = await Game.find({
             status: { $in: ['completed', 'abandoned'] },
@@ -38,19 +47,18 @@ exports.listGames = async (req, res) => {
         const completed = completedGames.map((g) => {
             const result = g.winnerId == null
                 ? 'draw'
-                : g.winnerId.toString() === userId
-                    ? 'win'
-                    : 'loss';
+                : g.winnerId.toString() === userId ? 'win' : 'loss';
+
             return {
                 gameId: g._id,
-                opponentUsername: g.players.find((id) => id.toString() !== userId).toString(),
+                opponentUsername: g.players.find((id) => id.toString() !== userId)?.toString() || 'Unknown',
                 result,
                 endTime: g.endTime
             };
         });
 
         logger.success('Games listed successfully');
-        res.json({ activeGames: active, completedGames: completed });
+        res.json({ activeGames: active.filter(Boolean), completedGames: completed });
     } catch (error) {
         logger.error(`List games error: ${error.message}`);
         res.status(500).json({ error: 'Server error' });
@@ -124,68 +132,69 @@ exports.useReward = async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 };
-
-// 📄 Oyunun anlık durumunu getir
 exports.getGameState = async (req, res) => {
-    logger.info(`GET /api/game/${req.params.gameId}`);
-    try {
-        const userId = req.user.userId;
-        const { gameId } = req.params;
+    const { gameId } = req.params;
+    const userId = req.user?.userId;
 
+    if (!gameId) {
+        logger.error('❌ Missing gameId in request params');
+        return res.status(400).json({ error: 'Game ID is required' });
+    }
+
+    logger.info(`GET /api/game/${gameId}`);
+
+    try {
         const game = await Game.findById(gameId);
-        if (!game || !game.players.includes(userId)) {
-            logger.warn(`Game not found or unauthorized access: gameId=${gameId}`);
+        if (!game) {
+            logger.warn(`❌ Game not found: ${gameId}`);
             return res.status(404).json({ error: 'Game not found' });
         }
 
+        if (!game.players.some((id) => id.toString() === userId)) {
+            logger.warn(`❌ Unauthorized access to game: ${gameId} by userId=${userId}`);
+            return res.status(403).json({ error: 'Unauthorized access' });
+        }
+
         const state = await GameState.findOne({ gameId });
+        if (!state) {
+            logger.warn(`❌ GameState not found for gameId=${gameId}`);
+            return res.status(404).json({ error: 'Game state not found' });
+        }
+
         const opponentId = game.players.find((id) => id.toString() !== userId);
+        const isPlayer1 = state.player1Id.toString() === userId;
 
         const view = {
             gameId,
             player: userId,
             opponent: opponentId,
-            playerScore:
-                state.player1Id.toString() === userId
-                    ? state.player1Score
-                    : state.player2Score,
-            opponentScore:
-                state.player1Id.toString() === userId
-                    ? state.player2Score
-                    : state.player1Score,
-            playerHand:
-                state.player1Id.toString() === userId
-                    ? state.player1Hand
-                    : state.player2Hand,
-            opponentHandSize:
-                state.player1Id.toString() === userId
-                    ? state.player2Hand.length
-                    : state.player1Hand.length,
+            playerScore: isPlayer1 ? state.player1Score : state.player2Score,
+            opponentScore: isPlayer1 ? state.player2Score : state.player1Score,
+            playerHand: isPlayer1 ? state.player1Hand : state.player2Hand,
+            opponentHandSize: isPlayer1 ? state.player2Hand.length : state.player1Hand.length,
             boardState: state.boardState,
             currentTurn: state.currentTurn,
             letterPoolSize: state.letterPool.length,
-            playerRewards:
-                state.player1Id.toString() === userId
-                    ? state.player1Rewards
-                    : state.player2Rewards,
+            playerRewards: isPlayer1 ? state.player1Rewards : state.player2Rewards,
             timeOption: game.timeOption,
             turnStartTime: state.turnStartTime,
             gameStatus: game.status,
             winner: game.winnerId,
             winnerUsername: game.winnerId
-                ? (await require('../models/User').findById(game.winnerId)).username
+                ? (await require('../models/User').findById(game.winnerId))?.username || null
                 : null,
             isYourTurn: state.currentTurn.toString() === userId,
-            timeRemaining: null
+            timeRemaining: null // TODO: hesapla
         };
 
-        logger.success(`Game state fetched: gameId=${gameId}`);
+        logger.success(`✅ Game state fetched: gameId=${gameId}`);
         res.json(view);
     } catch (error) {
-        logger.error(`Get game state error: ${error.message}`);
+        logger.error(`❌ Get game state error: ${error.message}`);
         res.status(500).json({ error: 'Server error' });
     }
 };
+
 
 // 📄 Kelime koy: oyuncu hamlesi
 exports.placeWord = async (req, res) => {
