@@ -59,8 +59,66 @@ exports.listGames = async (req, res) => {
 exports.useReward = async (req, res) => {
     logger.info(`POST /api/game/${req.params.gameId}/use-reward - body: ${JSON.stringify(req.body)}`);
     try {
-        // Henüz gerçek mantık yok, sahte cevap dönüyoruz
-        res.json({ success: true, message: 'Reward used (dummy response)' });
+        const userId = req.user.userId;
+        const { gameId } = req.params;
+        const { rewardId } = req.body;
+
+        const state = await GameState.findOne({ gameId });
+        if (!state) return res.status(404).json({ error: 'Game not found' });
+
+        const isPlayer1 = state.player1Id.toString() === userId;
+        let hand = isPlayer1 ? [...state.player1Hand] : [...state.player2Hand];
+
+        if (state.currentTurn.toString() !== userId) {
+            return res.status(403).json({ error: 'Not your turn' });
+        }
+
+        // 🎁 Reward Logic
+        if (rewardId === 'change_letters') {
+            state.letterPool.push(...hand);
+            hand = [];
+            while (hand.length < 7 && state.letterPool.length > 0) {
+                const rand = Math.floor(Math.random() * state.letterPool.length);
+                const next = state.letterPool.splice(rand, 1)[0];
+                hand.push(next);
+            }
+        } else if (rewardId === 'extra_letter') {
+            if (hand.length >= 7) {
+                return res.status(400).json({ error: 'Elde zaten 7 harf var' });
+            }
+            if (state.letterPool.length === 0) {
+                return res.status(400).json({ error: 'Harf havuzu boş' });
+            }
+            const rand = Math.floor(Math.random() * state.letterPool.length);
+            const next = state.letterPool.splice(rand, 1)[0];
+            hand.push(next);
+        } else if (rewardId === 'add_joker') {
+            const index = state.letterPool.indexOf('JOKER');
+            if (index === -1) {
+                return res.status(400).json({ error: 'JOKER kalmadı' });
+            }
+            if (hand.length >= 7) {
+                return res.status(400).json({ error: 'El dolu, JOKER eklenemez' });
+            }
+            hand.push('JOKER');
+            state.letterPool.splice(index, 1);
+        } else {
+            return res.status(400).json({ error: 'Geçersiz ödül' });
+        }
+
+        if (isPlayer1) state.player1Hand = hand;
+        else state.player2Hand = hand;
+
+        await state.save();
+
+        const io = req.app.get('io');
+        const UserSocket = require('../models/UserSocket');
+        const sockets = await UserSocket.find({ userId: { $in: [state.player1Id, state.player2Id] } });
+        for (const s of sockets) {
+            io.to(s.socketId).emit('game_state_updated', state);
+        }
+
+        res.json({ success: true, updatedHand: hand });
     } catch (error) {
         logger.error(`Use reward error: ${error.message}`);
         res.status(500).json({ error: 'Server error' });
@@ -114,6 +172,9 @@ exports.getGameState = async (req, res) => {
             turnStartTime: state.turnStartTime,
             gameStatus: game.status,
             winner: game.winnerId,
+            winnerUsername: game.winnerId
+                ? (await require('../models/User').findById(game.winnerId)).username
+                : null,
             isYourTurn: state.currentTurn.toString() === userId,
             timeRemaining: null
         };

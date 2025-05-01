@@ -1,7 +1,8 @@
 const Matchmaking = require('../models/Matchmaking');
 const Game = require('../models/Game');
 const GameState = require('../models/GameState');
-const { initializeGameState } = require('../utils/wordUtils');
+const { initializeGameState, shuffleLetters } = require('../utils/wordUtils');
+
 
 // Logger importu
 const logger = require('../utils/logger');

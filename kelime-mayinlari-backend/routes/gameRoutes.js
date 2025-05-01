@@ -12,4 +12,5 @@ router.post('/:gameId/pass', auth, gameCtrl.passTurn);
 router.post('/:gameId/resign', auth, gameCtrl.resign);
 router.post('/:gameId/use-reward', auth, gameCtrl.useReward);
 
+
 module.exports = router;

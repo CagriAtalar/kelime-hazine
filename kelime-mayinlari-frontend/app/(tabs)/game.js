@@ -7,7 +7,6 @@ import Board from '../../src/components/Board';
 import TileRow from '../../src/components/TileRow';
 import PlayButton from '../../src/components/PlayButton';
 import UndoButton from '../../src/components/UndoButton';
-import { harfPuani } from '../../src/utils/harfler';
 
 export default function GameScreen() {
     const { gameId } = useLocalSearchParams();
@@ -19,28 +18,22 @@ export default function GameScreen() {
     const [selectedTile, setSelectedTile] = useState(null);
     const [placedTiles, setPlacedTiles] = useState([]);
 
-    // ✅ 1. Oyun durumunu yükle
     const loadState = async () => {
-        const { data } = await api.get(`/game/${gameId}`);
-        setState(data);
-        setBoardState(data.boardState);
-        setHand(data.playerHand);
-        setPlacedTiles([]);
+        try {
+            const { data } = await api.get(`/game/${gameId}`);
+            setState(data);
+            setBoardState(data.boardState);
+            setHand(data.playerHand);
+            setPlacedTiles([]);
+        } catch (e) {
+            console.error('Game load error:', e);
+        }
     };
 
-    // ✅ 2. Hücreye tıklama
     const onCellPress = (row, col) => {
-        if (!selectedTile) return;
-        if (boardState[row][col].harf) {
-            Alert.alert('Zaten harf var!');
-            return;
-        }
-
+        if (!selectedTile || boardState[row][col].harf) return;
         const newBoard = [...boardState];
-        newBoard[row][col] = {
-            ...newBoard[row][col],
-            harf: selectedTile,
-        };
+        newBoard[row][col] = { ...newBoard[row][col], harf: selectedTile };
         setBoardState(newBoard);
 
         const newHand = [...hand];
@@ -52,30 +45,20 @@ export default function GameScreen() {
         setSelectedTile(null);
     };
 
-    // ✅ 3. Harf seçimi
-    const onTileSelect = (tile) => {
-        setSelectedTile(tile);
-    };
+    const onTileSelect = (tile) => setSelectedTile(tile);
 
-    // ✅ 4. Geri alma
     const handleUndo = () => {
         if (placedTiles.length === 0) return;
-
         const last = placedTiles[placedTiles.length - 1];
         const newBoard = [...boardState];
-        newBoard[last.row][last.col] = {
-            ...newBoard[last.row][last.col],
-            harf: null,
-        };
+        newBoard[last.row][last.col] = { ...newBoard[last.row][last.col], harf: null };
         setBoardState(newBoard);
         setHand([...hand, last.harf]);
         setPlacedTiles(placedTiles.slice(0, -1));
     };
 
-    // ✅ 5. Oynama
     const handlePlay = async () => {
         if (placedTiles.length === 0) return;
-
         const sorted = [...placedTiles].sort((a, b) => a.col - b.col || a.row - b.row);
         const word = sorted.map(t => t.harf).join('');
         const direction = sorted[0].row === sorted[1]?.row ? 'horizontal' : 'vertical';
@@ -88,19 +71,37 @@ export default function GameScreen() {
             });
             await loadState();
         } catch (e) {
-            console.error(e);
-            Alert.alert('Error', e.response?.data?.error || 'Geçersiz hamle');
+            console.error('Place Word Error:', e);
+            Alert.alert('Hata', e.response?.data?.error || 'Geçersiz hamle');
         }
     };
 
     const pass = async () => {
-        await api.post(`/game/${gameId}/pass`);
-        loadState();
+        try {
+            await api.post(`/game/${gameId}/pass`);
+            await loadState();
+        } catch (e) {
+            Alert.alert('Pass error', e.response?.data?.error || 'Hata');
+        }
     };
 
     const resign = async () => {
-        await api.post(`/game/${gameId}/resign`);
-        router.back();
+        try {
+            await api.post(`/game/${gameId}/resign`);
+            router.back();
+        } catch (e) {
+            Alert.alert('Resign error', e.response?.data?.error || 'Hata');
+        }
+    };
+
+    const useReward = async (rewardId) => {
+        try {
+            await api.post(`/game/${gameId}/use-reward`, { rewardId });
+            await loadState();
+        } catch (e) {
+            console.error('Reward error:', e);
+            Alert.alert('Ödül Hatası', e.response?.data?.error || 'Kullanılamadı');
+        }
     };
 
     useEffect(() => {
@@ -117,12 +118,9 @@ export default function GameScreen() {
         };
 
         setup();
-
         return () => {
             const socket = getSocket();
-            if (socket) {
-                socket.off('game_state_updated');
-            }
+            if (socket) socket.off('game_state_updated');
         };
     }, []);
 
@@ -130,9 +128,14 @@ export default function GameScreen() {
 
     return (
         <View style={styles.container}>
+            {state.gameStatus === 'completed' && state.winnerUsername && (
+                <Text style={styles.winner}>🎉 Kazanan: {state.winnerUsername}</Text>
+            )}
+
             <Text style={styles.status}>
                 {state.isYourTurn ? 'Sıra sizde!' : 'Rakip düşünüyor...'}
             </Text>
+
             <Text style={styles.score}>
                 SEN: {state.playerScore} — {state.opponentScore} :RAKİP
             </Text>
@@ -141,8 +144,15 @@ export default function GameScreen() {
             <TileRow letters={hand} onTileSelect={onTileSelect} />
             <UndoButton onPress={handleUndo} />
             <PlayButton onPress={handlePlay} />
-            <Text style={{ marginTop: 10 }} onPress={pass}>⏩ PASS</Text>
-            <Text style={{ color: 'red', marginTop: 4 }} onPress={resign}>❌ RESIGN</Text>
+
+            <View style={styles.rewards}>
+                <Text style={styles.reward} onPress={() => useReward('add_joker')}>🎁 JOKER AL</Text>
+                <Text style={styles.reward} onPress={() => useReward('change_letters')}>🔄 Harfleri Değiştir</Text>
+                <Text style={styles.reward} onPress={() => useReward('extra_letter')}>➕ Ekstra Harf Al</Text>
+            </View>
+
+            <Text style={styles.action} onPress={pass}>⏩ PASS</Text>
+            <Text style={[styles.action, { color: 'red' }]} onPress={resign}>❌ RESIGN</Text>
         </View>
     );
 }
@@ -150,5 +160,14 @@ export default function GameScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, alignItems: 'center', paddingTop: 20 },
     status: { fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
-    score: { fontSize: 14, marginBottom: 10 }
+    score: { fontSize: 14, marginBottom: 10 },
+    winner: { fontSize: 18, fontWeight: 'bold', color: 'green', marginBottom: 10 },
+    action: { marginTop: 10, fontSize: 14 },
+    rewards: { marginTop: 16, alignItems: 'center' },
+    reward: {
+        fontSize: 16,
+        color: '#007bff',
+        fontWeight: 'bold',
+        marginVertical: 4
+    }
 });
