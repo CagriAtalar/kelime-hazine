@@ -9,7 +9,7 @@ export const initSocket = async () => {
     const token = await AsyncStorage.getItem('token');  // Token'ı alıyoruz.
 
     // Socket.io bağlantısını kuruyoruz.
-    socket = io('http://192.168.1.116:5000', {
+    socket = io('http://192.168.53.214:5000', {
         auth: { token }
     });
 
