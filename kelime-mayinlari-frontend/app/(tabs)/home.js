@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Button, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Button, FlatList, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import api from '../../src/api/api';
-import { initSocket, getSocket } from '../../src/utils/socket';
+import { initSocket } from '../../src/utils/socket';
 import { useRouter } from 'expo-router';
-export default function HomeScreen({ navigation }) {
+
+export default function HomeScreen() {
     const [active, setActive] = useState([]);
     const [completed, setCompleted] = useState([]);
     const [status, setStatus] = useState('');
     const router = useRouter();
+
+    // Oyunları yükle
     const loadGames = async () => {
         try {
             const { data } = await api.get('/game');
@@ -18,77 +21,111 @@ export default function HomeScreen({ navigation }) {
                 setCompleted(data.completedGames);
             }
         } catch (e) {
-            console.error("Error loading games:", e);
+            console.error('Error loading games:', e);
         }
     };
-    // Join matchmaking
+
+    // Eşleşme kuyruğuna gir
     const joinQueue = async () => {
-        setStatus('waiting');
+        setStatus('Bekleniyor...');
         try {
             const { data } = await api.post('/matchmaking', { timeOption: '2min' });
             if (data.status === 'matched') {
-                // Doğrudan game sayfasına yönlendir
                 router.push(`/game/${data.gameId}`);
             } else {
-                setStatus('waiting for match…');
+                setStatus('Eşleşme bekleniyor...');
             }
         } catch (e) {
-            console.error('Error in matchmaking:', e);
-            setStatus('Error in matchmaking');
+            console.error('Eşleşme hatası:', e);
+            setStatus('Eşleşme başarısız');
         }
     };
+
+    // Oyuna yönlendir
     const navigateToGame = (gameId) => {
         if (gameId) {
-            router.push(`/game/${gameId}`); // Expo router kullanarak yönlendirme yapıyoruz
+            router.push(`/game/${gameId}`);
         } else {
-            Alert.alert('Error', 'Game ID is invalid');
+            Alert.alert('Hata', 'Geçersiz oyun ID');
         }
     };
+
+    // WebSocket ve oyun yükleme
     useEffect(() => {
-        loadGames();
-        initSocket().then(socket => {
+        const setup = async () => {
+            await loadGames();
+            const socket = await initSocket();
+
             socket.on('game_created', ({ gameId }) => {
-                navigation.navigate('Game', { gameId });
+                router.push(`/game/${gameId}`);
             });
-            socket.on('game_state_updated', () => loadGames());
-        });
+
+            socket.on('game_state_updated', loadGames);
+
+            return () => {
+                socket.off('game_created');
+                socket.off('game_state_updated');
+            };
+        };
+
+        setup();
     }, []);
 
     return (
         <View style={styles.container}>
-            <Button title="Quick Match (2min)" onPress={joinQueue} />
+            <Button title="Hızlı Eşleşme (2dk)" onPress={joinQueue} />
             <Text>{status}</Text>
 
-            <Text style={styles.heading}>Active Games</Text>
+            <Text style={styles.heading}>Aktif Oyunlar</Text>
             <FlatList
                 data={active}
-                keyExtractor={(item) => item.gameId.toString()}  // gameId'yi string yapıyoruz
+                keyExtractor={(item) => item.gameId.toString()}
                 renderItem={({ item }) => (
-                    <TouchableOpacity onPress={() => navigateToGame(item.gameId)}>
+                    <TouchableOpacity
+                        style={styles.gameItem}
+                        onPress={() => navigateToGame(item.gameId)}
+                    >
                         <Text>
-                            vs {item.opponentUsername} — {item.timeOption} —{' '}
-                            {item.isYourTurn ? 'Your turn' : "Opp's turn"}
+                            {item.opponentUsername
+                                ? `Rakip: ${item.opponentUsername}`
+                                : `Oyun: ${item.gameId}`}
+                        </Text>
+                        <Text>
+                            Süre: {item.timeOption} —{' '}
+                            {item.isYourTurn ? 'Sıra sende' : 'Rakipte'}
                         </Text>
                     </TouchableOpacity>
                 )}
+                ListEmptyComponent={<Text>Aktif oyununuz yok.</Text>}
             />
 
-            <Text style={styles.heading}>Completed Games</Text>
+            <Text style={styles.heading}>Tamamlanan Oyunlar</Text>
             <FlatList
                 data={completed}
                 keyExtractor={(item) => item.gameId.toString()}
                 renderItem={({ item }) => (
-                    <Text>
-                        vs {item.opponentUsername} — {item.result} @{' '}
-                        {new Date(item.endTime).toLocaleString()}
-                    </Text>
+                    <View style={styles.gameItem}>
+                        <Text>
+                            vs {item.opponentUsername} — {item.result}
+                        </Text>
+                        <Text>
+                            Bitiş: {new Date(item.endTime).toLocaleString()}
+                        </Text>
+                    </View>
                 )}
+                ListEmptyComponent={<Text>Henüz tamamlanan oyununuz yok.</Text>}
             />
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, padding: 16 },
-    heading: { marginTop: 16, fontWeight: 'bold' }
+    container: { flex: 1, padding: 16, backgroundColor: '#fff' },
+    heading: { marginTop: 20, fontSize: 18, fontWeight: 'bold' },
+    gameItem: {
+        padding: 10,
+        marginTop: 10,
+        backgroundColor: '#f0f0f0',
+        borderRadius: 8
+    }
 });
