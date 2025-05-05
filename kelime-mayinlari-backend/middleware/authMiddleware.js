@@ -23,7 +23,7 @@ module.exports = async (req, res, next) => {
         }
 
         req.user = decoded;
-        logger.info(`Authorized request: userId=${decoded.userId}`);
+        //logger.info(`Authorized request: userId=${decoded.userId}`);
         next();
     } catch (err) {
         logger.warn('Invalid token provided');

@@ -16,10 +16,24 @@ exports.register = async (req, res) => {
             logger.warn('Register failed: Missing fields');
             return res.status(400).json({ error: 'All fields are required' });
         }
-        if (password.length < 8) {
-            logger.warn('Register failed: Password too short');
-            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+        // 📧 E-posta geçerliliği kontrolü
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            logger.warn('Register failed: Invalid email format');
+            return res.status(400).json({ error: 'Invalid email format' });
         }
+
+        // 🔐 Şifre karmaşık mı?
+        const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+        if (!passwordRegex.test(password)) {
+            logger.warn('Register failed: Weak password');
+            return res.status(400).json({
+                error:
+                    'Password must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, and one number'
+            });
+        }
+
         const exists = await User.findOne({ $or: [{ username }, { email }] });
         if (exists) {
             logger.warn('Register failed: Username or email taken');
@@ -76,7 +90,16 @@ exports.login = async (req, res) => {
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
         });
 
-        const stats = await UserStatistics.findOne({ userId: user._id });
+        let stats = await UserStatistics.findOne({ userId: user._id });
+        if (!stats) {
+            stats = await UserStatistics.create({
+                userId: user._id,
+                gamesPlayed: 0,
+                gamesWon: 0,
+                gamesLost: 0,
+                gamesDrawn: 0
+            });
+        }
         const winPercentage =
             stats.gamesPlayed > 0
                 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100)

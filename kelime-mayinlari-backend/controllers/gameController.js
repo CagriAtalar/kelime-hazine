@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 
 // 📄 Listele: Kullanıcının aktif ve tamamlanan oyunları
 exports.listGames = async (req, res) => {
-    logger.info('GET /api/game');
+    //logger.info('GET /api/game');
     try {
         const userId = req.user.userId;
 
@@ -57,7 +57,7 @@ exports.listGames = async (req, res) => {
             };
         });
 
-        logger.success('Games listed successfully');
+        //logger.success('Games listed successfully');
         res.json({ activeGames: active.filter(Boolean), completedGames: completed });
     } catch (error) {
         logger.error(`List games error: ${error.message}`);
@@ -141,7 +141,7 @@ exports.getGameState = async (req, res) => {
         return res.status(400).json({ error: 'Game ID is required' });
     }
 
-    logger.info(`GET /api/game/${gameId}`);
+    //logger.info(`GET /api/game/${gameId}`);
 
     try {
         const game = await Game.findById(gameId);
@@ -187,7 +187,7 @@ exports.getGameState = async (req, res) => {
             timeRemaining: null // TODO: hesapla
         };
 
-        logger.success(`✅ Game state fetched: gameId=${gameId}`);
+        //logger.success(`✅ Game state fetched: gameId=${gameId}`);
         res.json(view);
     } catch (error) {
         logger.error(`❌ Get game state error: ${error.message}`);

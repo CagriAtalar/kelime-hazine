@@ -10,6 +10,7 @@ import UndoButton from '../../../src/components/UndoButton';
 
 import { harfPuani } from '../../../src/utils/harfler';
 import layout from '../../../src/utils/boardLayout';
+import { initSocket } from '../../../src/utils/socket';
 
 export default function GameScreen() {
     const { gameId } = useLocalSearchParams();
@@ -37,7 +38,7 @@ export default function GameScreen() {
             setState(data);
             setBoardState(initializeBoard(data.boardState));
             setHand(data.playerHand);
-            setPlacedTiles([]);
+            // ❌ BUNU KALDIR: setPlacedTiles([]);
             setMessage('');
         } catch (e) {
             console.error('Game load error:', e);
@@ -120,7 +121,22 @@ export default function GameScreen() {
             console.error('Pass error:', e);
             Alert.alert("Hata", "Pas geçilemedi");
         }
-    };
+    }; useEffect(() => {
+        const setupSocket = async () => {
+            const socket = await initSocket();
+            socket.emit('registerSocket', { userId: state?.player });
+
+            socket.on('game_state_updated', (newState) => {
+                loadState(); // Güncel veriyi çek
+            });
+
+            return () => {
+                socket.off('game_state_updated');
+            };
+        };
+
+        if (state?.player) setupSocket();
+    }, [state?.player]);
 
     const handleResign = async () => {
         Alert.alert('Teslim Ol', 'Oyunu teslim etmek istiyor musunuz?', [

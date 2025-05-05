@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-const TILE_SIZE = 24;
+const TILE_SIZE = 16;
 
 export default function Board({ boardState, onCellPress }) {
     return (
@@ -19,7 +19,7 @@ export default function Board({ boardState, onCellPress }) {
                         }[cell.type || 'NORMAL'];
 
                         let content = '';
-                        if (cell.harf) {
+                        if (typeof cell.harf === 'string' && cell.harf.length > 0) {
                             content = cell.harf.toUpperCase();
                         } else if (cell.type === 'CENTER') {
                             content = '★';
@@ -60,7 +60,9 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     text: {
-        fontSize: 10,
-        textAlign: 'center'
+        fontSize: 14,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        color: '#000', // Görünürlük için siyah renk
     },
 });
